@@ -5,6 +5,27 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Sequelize = require("sequelize");
 const bcrypt = require("bcrypt");
+const passport = require('passport');
+
+
+
+const userAuth = passport.authenticate("jwt", { session: false });
+router.get("/",userAuth,(req,res)=>{
+  User.findAll().then(result=>{
+    res.send(result);
+  }).catch(err=>{
+    console.log(err);
+  })
+})
+
+router.get("/:id",userAuth,(req,res)=>{
+  User.findOne({where:{id:req.params.id}})
+  .then(result=>{
+    res.send(result);
+  }).catch(err=>{
+    console.log(err);
+  })
+})
 
 
 
@@ -25,34 +46,87 @@ router.post("/signup", async (req, res) => {
     });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", (req, res) => {
   const user =  User.findOne({
     where: {
       email: req.body.email
     }
-  }).then(user => {
-    if (!user) {
-      return res.status(404).send('User Not Found.');
-    }
- 
-    var passwordIsValid = bcrypt.compare(req.body.password, user.password);
-    if (!passwordIsValid) {
-      return res.status(401).send({ auth: false, accessToken: null, reason: "Invalid Password!" });
-    }
-    
-    var token = jwt.sign({ id: user.id }, process.env.APP_SECRET, {
-      expiresIn: 86400 // expires in 24 hours
+  })
+    .then(user => {
+      if (user.length < 1) {
+        return res.status(401).json({
+          message: "Auth failed"
+        });
+      }
+     let isMatch = bcrypt.compare(req.body.password, user.password);
+        if (!isMatch) {
+          return res.status(401).json({
+            message: "Auth failed"
+          });
+        }
+        if (isMatch) {
+          const token = jwt.sign(
+            {
+              email: user.email,
+              userId: user.id
+            },
+            process.env.APP_SECRET,
+            {
+                expiresIn: "7 days"
+            }
+          );
+          return res.status(200).json({
+            message: "Auth successful",
+            token: token
+          });
+        }
+        res.status(401).json({
+          message: "Auth failed"
+     });
+    })
+    .catch(err => {
+      console.log(err);
+      res.status(500).json({
+        error: err
+      });
     });
-    
-    res.status(200).send({ auth: true, Token: token });
-    
-  }).catch(err => {
-    res.status(500).send('Error -> ' + err);
-  });
- 
+  })
+
+router.put("/:id",userAuth, (req, res) => {
+  const _id = req.params.id;
+  User.findOne({
+    where: { id: _id },
+  })
+    .then((result) => {
+      result
+        .update({
+          name: req.body.name,
+          email:req.body.email
+        })
+        .then((update) => {
+          console.log(update);
+          res.json(update);
+        });
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 });
 
 
+router.delete("/:id",userAuth, (req, res) => {
+  const _id = req.params.id;
+  User.destroy({
+    where: { id: _id },
+  })
+    .then((result) => {
+      res.json({ status: "deleted succefully", result: result });
+      console.log("deleted succesfully");
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+});
 
 
 module.exports = router;
